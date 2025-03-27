@@ -1,0 +1,372 @@
+@page "/"
+@using System.ComponentModel.DataAnnotations
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Analyseur de Plans PDF</PageTitle>
+
+<div class="main-container">
+    <div class="content-wrapper">
+        <div class="header">
+            <h1>Analyseur de Plans PDF</h1>
+            <p class="subtitle">Analysez vos plans PDF et exportez les données en CSV</p>
+        </div>
+
+        <div class="upload-section">
+            <div class="upload-area" @ondragover:preventDefault @ondrop="OnDrop">
+                <InputFile OnChange="OnFileSelected" accept=".pdf" multiple class="file-input" />
+                <div class="upload-content">
+                    <i class="bi bi-cloud-upload"></i>
+                    <h3>Glissez-déposez vos fichiers PDF ici</h3>
+                    <p>ou</p>
+                    <button class="btn btn-primary btn-lg">Sélectionner des fichiers</button>
+                    <p class="file-types">Formats acceptés : PDF</p>
+                </div>
+            </div>
+
+            @if (selectedFiles?.Any() == true)
+            {
+                <div class="files-list">
+                    <h3>Fichiers sélectionnés</h3>
+                    <div class="files-grid">
+                        @foreach (var file in selectedFiles)
+                        {
+                            var fileStatus = fileStatuses.GetValueOrDefault(file.Name);
+                            <div class="file-card">
+                                <div class="file-icon">
+                                    <i class="bi bi-file-pdf"></i>
+                                </div>
+                                <div class="file-info">
+                                    <div class="file-name">@file.Name</div>
+                                    <div class="file-size">@(file.Size / 1024) KB</div>
+                                </div>
+                                <div class="file-status">
+                                    @if (fileStatus?.IsAnalyzing == true)
+                                    {
+                                        <div class="status analyzing">
+                                            <div class="spinner-border spinner-border-sm" role="status"></div>
+                                            <span>Analyse en cours</span>
+                                        </div>
+                                    }
+                                    else if (fileStatus?.IsCompleted == true)
+                                    {
+                                        <div class="status completed">
+                                            <i class="bi bi-check-circle-fill"></i>
+                                            <span>Terminé</span>
+                                        </div>
+                                    }
+                                    else if (fileStatus?.HasError == true)
+                                    {
+                                        <div class="status error">
+                                            <i class="bi bi-exclamation-circle-fill"></i>
+                                            <span>@fileStatus.ErrorMessage</span>
+                                        </div>
+                                    }
+                                </div>
+                                <div class="file-actions">
+                                    <button class="btn btn-outline-primary btn-sm" @onclick="() => ConvertToBase64(file)">
+                                        <i class="bi bi-code-square"></i> Convertir en Base64
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(errorMessage))
+            {
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    @errorMessage
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(base64Pdf))
+            {
+                <div class="result-section">
+                    <div class="result-header">
+                        <h3>PDF en Base64</h3>
+                        <button class="btn btn-outline-secondary btn-sm" @onclick="() => base64Pdf = null">
+                            <i class="bi bi-x-lg"></i> Fermer
+                        </button>
+                    </div>
+                    <div class="result-content">
+                        <div class="base64-preview">
+                            <pre>@base64Pdf</pre>
+                        </div>
+                    </div>
+                </div>
+            }
+
+            @if (!string.IsNullOrEmpty(result))
+            {
+                <div class="result-section">
+                    <div class="result-header">
+                        <h3>Résultat de l'analyse</h3>
+                        <button class="btn btn-success" @onclick="DownloadCsv">
+                            <i class="bi bi-file-earmark-excel"></i> Exporter en CSV
+                        </button>
+                    </div>
+                    <div class="result-content">
+                        <pre>@result</pre>
+                    </div>
+                </div>
+            }
+
+            <div class="action-buttons">
+                <button class="btn btn-primary btn-lg" 
+                        @onclick="AnalyzePdf" 
+                        disabled="@(isLoading || selectedFiles == null || !selectedFiles.Any())">
+                    @if (isLoading)
+                    {
+                        <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                        <span>Analyse en cours...</span>
+                    }
+                    else
+                    {
+                        <span>Analyser les plans</span>
+                    }
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    .main-container {
+        min-height: 100vh;
+        background-color: #f8f9fa;
+        padding: 2rem;
+    }
+
+    .content-wrapper {
+        max-width: 1200px;
+        margin: 0 auto;
+    }
+
+    .header {
+        text-align: center;
+        margin-bottom: 3rem;
+    }
+
+    .header h1 {
+        font-size: 2.5rem;
+        color: #2c3e50;
+        margin-bottom: 0.5rem;
+    }
+
+    .subtitle {
+        color: #6c757d;
+        font-size: 1.1rem;
+    }
+
+    .upload-section {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        padding: 2rem;
+    }
+
+    .upload-area {
+        border: 2px dashed #dee2e6;
+        border-radius: 8px;
+        padding: 3rem;
+        text-align: center;
+        background-color: #f8f9fa;
+        transition: all 0.3s ease;
+        position: relative;
+        cursor: pointer;
+    }
+
+    .upload-area:hover {
+        border-color: #0d6efd;
+        background-color: #f1f8ff;
+    }
+
+    .file-input {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        opacity: 0;
+        cursor: pointer;
+    }
+
+    .upload-content {
+        pointer-events: none;
+    }
+
+    .upload-content i {
+        font-size: 3rem;
+        color: #0d6efd;
+        margin-bottom: 1rem;
+    }
+
+    .upload-content h3 {
+        color: #2c3e50;
+        margin-bottom: 0.5rem;
+    }
+
+    .file-types {
+        color: #6c757d;
+        font-size: 0.9rem;
+        margin-top: 1rem;
+    }
+
+    .files-list {
+        margin-top: 2rem;
+    }
+
+    .files-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+        gap: 1rem;
+        margin-top: 1rem;
+    }
+
+    .file-card {
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 1rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        transition: all 0.3s ease;
+    }
+
+    .file-card:hover {
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .file-icon {
+        font-size: 1.5rem;
+        color: #dc3545;
+    }
+
+    .file-info {
+        flex: 1;
+    }
+
+    .file-name {
+        font-weight: 500;
+        color: #2c3e50;
+    }
+
+    .file-size {
+        font-size: 0.9rem;
+        color: #6c757d;
+    }
+
+    .file-status {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .status {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.9rem;
+    }
+
+    .status.analyzing {
+        color: #0d6efd;
+    }
+
+    .status.completed {
+        color: #198754;
+    }
+
+    .status.error {
+        color: #dc3545;
+    }
+
+    .result-section {
+        margin-top: 2rem;
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 1.5rem;
+    }
+
+    .result-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+    }
+
+    .result-content {
+        background: white;
+        border-radius: 4px;
+        padding: 1rem;
+        overflow-x: auto;
+    }
+
+    .result-content pre {
+        margin: 0;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+
+    .action-buttons {
+        display: flex;
+        justify-content: center;
+        margin-top: 2rem;
+    }
+
+    .btn {
+        padding: 0.75rem 1.5rem;
+        font-weight: 500;
+    }
+
+    .alert {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-top: 1rem;
+    }
+
+    .file-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+
+    .base64-preview {
+        max-height: 300px;
+        overflow-y: auto;
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 0.8rem;
+        line-height: 1.4;
+    }
+
+    .base64-preview pre {
+        margin: 0;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+</style>
+
+<script>
+    window.downloadCsv = (fileName, content) => {
+        try {
+            const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+        } catch (error) {
+            console.error('Erreur lors du téléchargement:', error);
+            alert('Erreur lors du téléchargement du fichier CSV');
+        }
+    }
+</script>
