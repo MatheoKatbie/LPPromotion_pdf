@@ -6,16 +6,19 @@ public class PlanAnalysis
 {
     // Propriété pour stocker le nom du fichier (non sérialisée en JSON)
     [JsonIgnore]
-    public string FileName { get; set; } = string.Empty;
+    public string? FileName { get; set; }
 
     [JsonPropertyName("type_bien")]
-    public string TypeBien { get; set; } = string.Empty;
+    public string? TypeBien { get; set; }
 
     [JsonPropertyName("surfaces")]
     public Surfaces Surfaces { get; set; } = new();
 
     [JsonPropertyName("caracteristiques")]
     public List<string> Caracteristiques { get; set; } = new();
+
+    [JsonPropertyName("vision_analysis")]
+    public string? VisionAnalysis { get; set; }
 
     public override string ToString()
     {

@@ -62,11 +62,6 @@
                                         </div>
                                     }
                                 </div>
-                                <div class="file-actions">
-                                    <button class="btn btn-outline-primary btn-sm" @onclick="() => ConvertToBase64(file)">
-                                        <i class="bi bi-code-square"></i> Convertir en Base64
-                                    </button>
-                                </div>
                             </div>
                         }
                     </div>
@@ -81,22 +76,7 @@
                 </div>
             }
 
-            @if (!string.IsNullOrEmpty(base64Pdf))
-            {
-                <div class="result-section">
-                    <div class="result-header">
-                        <h3>PDF en Base64</h3>
-                        <button class="btn btn-outline-secondary btn-sm" @onclick="() => base64Pdf = null">
-                            <i class="bi bi-x-lg"></i> Fermer
-                        </button>
-                    </div>
-                    <div class="result-content">
-                        <div class="base64-preview">
-                            <pre>@base64Pdf</pre>
-                        </div>
-                    </div>
-                </div>
-            }
+            
 
             @if (!string.IsNullOrEmpty(result))
             {
@@ -108,7 +88,41 @@
                         </button>
                     </div>
                     <div class="result-content">
-                        <pre>@result</pre>
+                        @foreach (var analysis in analyses)
+                        {
+                            <div class="analysis-result">
+                                <h4>@analysis.FileName</h4>
+                                <div class="analysis-details">
+                                    <p><strong>Type de bien :</strong> @analysis.TypeBien</p>
+                                    <p><strong>Surface totale :</strong> @analysis.Surfaces.SurfaceTotale m²</p>
+                                    <div class="pieces-list">
+                                        <strong>Pièces :</strong>
+                                        <ul>
+                                            @foreach (var piece in analysis.Surfaces.Pieces)
+                                            {
+                                                <li>@piece.Nom : @piece.Surface m²</li>
+                                            }
+                                        </ul>
+                                    </div>
+                                    <div class="caracteristiques">
+                                        <strong>Caractéristiques :</strong>
+                                        <ul>
+                                            @foreach (var carac in analysis.Caracteristiques)
+                                            {
+                                                <li>@carac</li>
+                                            }
+                                        </ul>
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(analysis.VisionAnalysis))
+                                    {
+                                        <div class="vision-analysis">
+                                            <strong>Analyse de l'exposition :</strong>
+                                            <p>@analysis.VisionAnalysis</p>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+                        }
                     </div>
                 </div>
             }
@@ -349,6 +363,73 @@
         margin: 0;
         white-space: pre-wrap;
         word-wrap: break-word;
+    }
+
+    .analysis-result {
+        background: white;
+        border-radius: 8px;
+        padding: 1.5rem;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+
+    .analysis-result h4 {
+        color: #2c3e50;
+        margin-bottom: 1rem;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid #f0f0f0;
+    }
+
+    .analysis-details {
+        display: grid;
+        gap: 1rem;
+    }
+
+    .analysis-details p {
+        margin: 0;
+        color: #4a5568;
+    }
+
+    .pieces-list, .caracteristiques {
+        margin-top: 1rem;
+    }
+
+    .pieces-list ul, .caracteristiques ul {
+        list-style: none;
+        padding-left: 0;
+        margin: 0.5rem 0;
+    }
+
+    .pieces-list li, .caracteristiques li {
+        color: #4a5568;
+        margin: 0.25rem 0;
+        padding-left: 1.5rem;
+        position: relative;
+    }
+
+    .pieces-list li:before, .caracteristiques li:before {
+        content: "•";
+        color: #0d6efd;
+        position: absolute;
+        left: 0;
+    }
+
+    .vision-analysis {
+        margin-top: 1.5rem;
+        padding-top: 1rem;
+        border-top: 1px solid #e2e8f0;
+    }
+
+    .vision-analysis strong {
+        color: #2c3e50;
+        display: block;
+        margin-bottom: 0.5rem;
+    }
+
+    .vision-analysis p {
+        color: #4a5568;
+        margin: 0;
+        line-height: 1.5;
     }
 </style>
 

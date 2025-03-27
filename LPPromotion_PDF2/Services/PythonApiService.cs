@@ -36,7 +36,18 @@ public class PythonApiService : IPythonApiService
         try
         {
             using var content = new MultipartFormDataContent();
-            content.Add(new StreamContent(pdfStream), "file", fileName);
+            
+            // Créer un MemoryStream pour stocker le contenu du PDF
+            using var memoryStream = new MemoryStream();
+            await pdfStream.CopyToAsync(memoryStream);
+            memoryStream.Position = 0;
+            
+            // Créer le StreamContent avec le bon type de contenu
+            var streamContent = new StreamContent(memoryStream);
+            streamContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/pdf");
+            
+            // Ajouter le fichier au contenu multipart
+            content.Add(streamContent, "file", fileName);
 
             var response = await _httpClient.PostAsync("/extract", content);
             response.EnsureSuccessStatusCode();

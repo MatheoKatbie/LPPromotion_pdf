@@ -20,7 +20,6 @@ namespace LPPromotion_PDF2.Pages
         private const long MaxTotalSize = 50 * 1024 * 1024; // 50MB total
         private List<PlanAnalysis> analyses = new();
         private Dictionary<string, FileStatus> fileStatuses = new();
-        private string? base64Pdf;
 
         [Inject]
         private IPythonApiService PythonApiService { get; set; } = default!;
@@ -151,7 +150,8 @@ namespace LPPromotion_PDF2.Pages
                             FileName = file.Name,
                             TypeBien = analysis.TypeBien,
                             Surfaces = analysis.Surfaces,
-                            Caracteristiques = analysis.Caracteristiques
+                            Caracteristiques = analysis.Caracteristiques,
+                            VisionAnalysis = analysis.VisionAnalysis
                         };
                         
                         // Stocker le nom du fichier dans une propriété temporaire
@@ -196,14 +196,33 @@ namespace LPPromotion_PDF2.Pages
             csv.Append("\uFEFF");
             
             // En-têtes
-            csv.AppendLine("Nom du fichier;Type de bien;Surface totale;Pièces;Caractéristiques");
+            csv.AppendLine("Nom du fichier;Type de bien;Typologie;Étage;Surface totale;Pièces;Caractéristiques;Analyse de l'exposition");
 
             // Données
             foreach (var analysis in analyses)
             {
+                // Extraire la typologie et l'étage du type de bien
+                string typologie = "N/A";
+                string etage = "N/A";
+                
+                if (analysis.TypeBien?.Contains("Appartement") == true)
+                {
+                    // Exemple: "Appartement T3 - RDC" -> ["Appartement T3", "RDC"]
+                    var parts = analysis.TypeBien.Split(new[] { " - " }, StringSplitOptions.RemoveEmptyEntries);
+                    if (parts.Length > 0)
+                    {
+                        // "Appartement T3" -> "T3"
+                        typologie = parts[0].Replace("Appartement ", "");
+                    }
+                    if (parts.Length > 1)
+                    {
+                        etage = parts[1];
+                    }
+                }
+
                 // Formater les pièces avec leurs surfaces dans une seule cellule
                 var pieces = analysis.Surfaces.Pieces
-                    .OrderBy(p => p.Nom) // Trier les pièces par nom
+                    .OrderBy(p => p.Nom)
                     .Select(p => $"{p.Nom}: {p.Surface:0.00}m²");
 
                 // Joindre les pièces avec des retours à la ligne
@@ -215,18 +234,23 @@ namespace LPPromotion_PDF2.Pages
                 // Nettoyer les valeurs pour éviter les problèmes de formatage CSV
                 var fileName = analysis.FileName?.Replace(";", ",");
                 var typeBien = analysis.TypeBien?.Replace(";", ",");
+                var visionAnalysis = analysis.VisionAnalysis?.Replace(";", ",") ?? "";
                 
                 // Entourer les cellules contenant des sauts de ligne avec des guillemets doubles
                 // et échapper les guillemets existants
                 piecesFormatted = $"\"{piecesFormatted.Replace("\"", "\"\"")}\"";
                 caracteristiques = $"\"{caracteristiques.Replace("\"", "\"\"")}\"";
+                visionAnalysis = $"\"{visionAnalysis.Replace("\"", "\"\"")}\"";
                 
                 // Ajouter la ligne au CSV en utilisant le point-virgule comme séparateur
                 csv.AppendLine($"{fileName};" +
                               $"{typeBien};" +
+                              $"{typologie};" +
+                              $"{etage};" +
                               $"{analysis.Surfaces.SurfaceTotale:0.00}m²;" +
                               $"{piecesFormatted};" +
-                              $"{caracteristiques}");
+                              $"{caracteristiques};" +
+                              $"{visionAnalysis}");
             }
 
             return csv.ToString();
@@ -248,22 +272,6 @@ namespace LPPromotion_PDF2.Pages
             }
         }
 
-        private async Task ConvertToBase64(IBrowserFile file)
-        {
-            try
-            {
-                using var stream = file.OpenReadStream(maxAllowedSize: MaxFileSize);
-                using var memoryStream = new MemoryStream();
-                await stream.CopyToAsync(memoryStream);
-                
-                base64Pdf = Convert.ToBase64String(memoryStream.ToArray());
-                StateHasChanged();
-            }
-            catch (Exception ex)
-            {
-                errorMessage = $"Erreur lors de la conversion en base64 : {ex.Message}";
-            }
-        }
     }
 
     public class FileStatus

@@ -11,6 +11,11 @@ from openai import OpenAI
 import httpx
 import logging
 import decimal
+import pdf2image
+import tempfile
+from PIL import Image
+import io
+import base64
 
 # Configuration du logging
 logging.basicConfig(level=logging.DEBUG)
@@ -43,42 +48,25 @@ class ExtractedData(BaseModel):
     type_bien: str = Field(description="Type de bien (appartement, maison, etc.)")
     surfaces: Surfaces = Field(description="Informations sur les surfaces")
     caracteristiques: List[str] = Field(description="Liste des caractéristiques spéciales du bien")
+    vision_analysis: Optional[str] = Field(description="Analyse de l'image avec OpenAI Vision", default=None)
 
-# Configuration du client OpenAI pour Grok
+# Configuration du client OpenAI
 try:
-    api_key = os.getenv("GROK_API_KEY")
+    api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
-        raise ValueError("GROK_API_KEY n'est pas définie dans le fichier .env")
+        raise ValueError("OPENAI_API_KEY n'est pas définie dans le fichier .env")
     
     client = OpenAI(
         api_key=api_key,
-        base_url="https://api.x.ai/v1",
-        http_client=httpx.Client(
-            base_url="https://api.x.ai/v1",
-            headers={"Authorization": f"Bearer {api_key}"}
-        )
+        http_client=httpx.Client()
     )
     logger.info("Client OpenAI configuré avec succès")
 except Exception as e:
     logger.error(f"Erreur lors de la configuration du client OpenAI: {str(e)}")
     raise
 
-async def extract_text_from_pdf(pdf_file: UploadFile) -> str:
-    """Extrait le texte d'un fichier PDF."""
-    try:
-        logger.info(f"Début de l'extraction du texte du PDF: {pdf_file.filename}")
-        pdf_reader = PyPDF2.PdfReader(pdf_file.file)
-        text = ""
-        for page in pdf_reader.pages:
-            text += page.extract_text()
-        logger.info(f"Texte extrait avec succès, longueur: {len(text)} caractères")
-        return text
-    except Exception as e:
-        logger.error(f"Erreur lors de l'extraction du texte: {str(e)}")
-        raise HTTPException(status_code=400, detail=f"Erreur lors de l'extraction du texte: {str(e)}")
-
-def transform_response(response_data: dict) -> dict:
-    """Transforme la réponse de l'API Grok dans le format attendu."""
+async def transform_response(response_data: dict) -> dict:
+    """Transforme la réponse de l'API Vision dans le format attendu."""
     try:
         # Créer la liste des pièces à partir des surfaces individuelles
         pieces = []
@@ -126,6 +114,12 @@ def transform_response(response_data: dict) -> dict:
                     logger.warning(f"Surface invalide pour {key}: {value}")
                     continue
 
+        # Formater l'analyse Vision
+        vision_analysis = ""
+        if "vision_analysis" in response_data:
+            vision_data = response_data["vision_analysis"]
+            vision_analysis = f"Orientation du document : {vision_data.get('orientation_document', 'Non spécifiée')}"
+
         # Construire le nouveau format
         transformed_data = {
             "type_bien": response_data.get("type_de_bien", "Non spécifié"),
@@ -133,7 +127,8 @@ def transform_response(response_data: dict) -> dict:
                 "surface_totale": Decimal(str(response_data.get("surface_totale", 0))),
                 "pieces": pieces
             },
-            "caracteristiques": response_data.get("caracteristiques", [])
+            "caracteristiques": response_data.get("caracteristiques", []),
+            "vision_analysis": vision_analysis
         }
 
         logger.debug(f"Données transformées: {transformed_data}")
@@ -142,67 +137,104 @@ def transform_response(response_data: dict) -> dict:
         logger.error(f"Erreur lors de la transformation des données: {str(e)}")
         raise
 
-async def extract_structured_data(text: str) -> ExtractedData:
-    """Utilise l'API Grok pour extraire les données structurées du texte."""
-    system_prompt = """Tu es un expert en analyse de plans d'appartements. Ton rôle est d'analyser le texte fourni et d'extraire les informations pertinentes selon le schéma défini.
-    
-    Règles strictes :
-    1. Utilise des points (.) et non des virgules (,) pour les nombres décimaux
-    2. Les surfaces doivent être des nombres, pas des chaînes de caractères
-    3. Assure-toi que toutes les surfaces sont en m²
-    4. Les caractéristiques doivent être une liste de chaînes de caractères
-    5. Le type de bien doit être une description claire (appartement, maison, etc.)
-    6. IMPORTANT : Capture toutes les pièces mentionnées dans le texte
-    7. Ne fusionne pas les pièces, garde-les séparées
-    8. Pour les pièces avec des notes (comme "dont 2.4m² SDE"), inclure la surface totale
-    9. Pour toute pièce supplémentaire non listée dans le format de base, ajoute-la avec le préfixe "surface_" suivi du nom en minuscules avec des underscores
-    
-    Format de sortie attendu :
-    {
-        "type_de_bien": "type de bien",
-        "surface_totale": nombre,
-        "surface_entree": nombre,
-        "surface_sejour": nombre,
-        "surface_suite_parentale": nombre,
-        "surface_chambre2": nombre,
-        "surface_chambre3": nombre,
-        "surface_sdb": nombre,
-        "surface_wc": nombre,
-        "surface_dgt": nombre,
-        "surface_terrasse": nombre,
-        // Pièces supplémentaires si présentes dans le texte
-        "surface_bureau": nombre,  // Exemple de pièce supplémentaire
-        "surface_buanderie": nombre,  // Exemple de pièce supplémentaire
-        "caracteristiques": ["liste des caractéristiques"]
-    }"""
-
+async def analyze_image_with_vision(image_bytes: bytes) -> dict:
+    """Analyse une image avec OpenAI Vision pour extraire toutes les informations du plan."""
     try:
-        logger.info("Début de l'appel à l'API Grok")
-        completion = client.chat.completions.create(
-            model="grok-2-latest",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": text}
-            ],
+        logger.info("Début de l'analyse de l'image avec OpenAI Vision")
+        
+        # Créer le message pour OpenAI Vision
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": """Analysez cette image de plan d'appartement ou de maison et extrayez toutes les informations suivantes :
+
+                        1. Type de bien :
+                        - Identifiez s'il s'agit d'un appartement ou d'une maison
+                        - Si c'est un appartement :
+                          * Cherchez la typologie (T2, T3, T4, etc.) qui est généralement indiquée sur le plan
+                          * Identifiez l'étage (RDC, R+1, R+2, etc.) qui est indiqué sur le plan
+                          * Retournez le type sous la forme "Appartement T3 - RDC" ou "Appartement T4 - R+1"
+                        - Si c'est une maison, retournez simplement "Maison"
+                        2. Surface totale en m²
+                        3. Liste des pièces avec leurs surfaces en m²
+                        4. Caractéristiques spéciales du bien :
+                        - IMPORTANT : Les caractéristiques sont listées dans la légende en bas à droite du plan
+                        - Cherchez les symboles et leurs significations : PL (Placard), Etg (Étagère), EV (Évier), Ch (Chaudière gaz)
+                        - Si vous trouvez d'autres symboles dans la légende, ajoutez-les également avec leur signification
+                        - Listez toutes les caractéristiques présentes dans le plan en vous basant sur ces symboles
+                        5. Orientation :
+                        - IMPORTANT : Identifiez la flèche du nord qui est au-dessus du schéma du bâtiment (pas celle qui pourrait être sur le côté ou ailleurs)
+                        - Si la flèche pointe vers la droite, l'orientation du document est Ouest
+                        - Si la flèche pointe vers la gauche, l'orientation du document est Est
+                        - Si la flèche pointe vers le haut, l'orientation du document est Nord
+                        - Si la flèche pointe vers le bas, l'orientation du document est Sud
+                        - IMPORTANT : Le document est TOUJOURS orienté vers le HAUT, peu importe la direction de la flèche
+
+                        Retournez les informations au format JSON suivant :
+                        {
+                            "type_de_bien": "Appartement T3 - RDC/Appartement T4 - 1er étage/Maison",
+                            "surface_totale": nombre,
+                            "surface_entree": nombre,
+                            "surface_sejour": nombre,
+                            "surface_suite_parentale": nombre,
+                            "surface_chambre2": nombre,
+                            "surface_chambre3": nombre,
+                            "surface_sdb": nombre,
+                            "surface_wc": number,
+                            "surface_dgt": number,
+                            "surface_terrasse": number,
+                            "caracteristiques": ["Placard dans [pièce]", "Étagère dans [pièce]", "Évier dans [pièce]", "Chaudière gaz dans [pièce]"],
+                            "vision_analysis": {
+                                "orientation_document": "Nord/Sud/Est/Ouest"
+                            }
+                        }
+
+                        Règles strictes :
+                        1. Utilisez des points (.) et non des virgules (,) pour les nombres décimaux
+                        2. Toutes les surfaces doivent être en m²
+                        3. Capturez toutes les pièces mentionnées dans le plan
+                        4. Ne fusionnez pas les pièces, gardez-les séparées
+                        5. Pour les pièces avec des notes (comme "dont 2.4m² SDE"), incluez la surface totale
+                        6. Pour toute pièce supplémentaire non listée, ajoutez-la avec le préfixe "surface_" suivi du nom en minuscules avec des underscores
+                        7. IMPORTANT : Pour l'orientation, regardez UNIQUEMENT la flèche du nord qui est au-dessus du schéma du bâtiment
+                        8. IMPORTANT : Pour les caractéristiques, précisez la pièce où se trouve chaque équipement (PL, Etg, EV, Ch)"""
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/png;base64,{base64.b64encode(image_bytes).decode('utf-8')}"
+                        }
+                    }
+                ]
+            }
+        ]
+        
+        # Appeler l'API OpenAI Vision
+        response = client.chat.completions.create(
+            model="gpt-4o",
+            messages=messages,
+            max_tokens=1000,
             response_format={"type": "json_object"}
         )
-        logger.info("Réponse reçue de l'API Grok")
-
-        # Parse la réponse JSON
-        response_data = json.loads(completion.choices[0].message.content)
-        logger.debug(f"Réponse JSON brute: {response_data}")
+        
+        # Extraire et parser la réponse JSON
+        response_data = json.loads(response.choices[0].message.content)
+        logger.info("Analyse Vision réussie")
         
         # Transformer la réponse dans le format attendu
-        transformed_data = transform_response(response_data)
+        transformed_data = await transform_response(response_data)
         
         # Créer l'objet ExtractedData
         result = ExtractedData(**transformed_data)
         logger.info("Données structurées extraites avec succès")
-        return result
+        
+        return result.dict()
     except Exception as e:
-        logger.error(f"Erreur lors de l'analyse du texte: {str(e)}")
-        logger.error(f"Type d'erreur: {type(e).__name__}")
-        raise HTTPException(status_code=500, detail=f"Erreur lors de l'analyse du texte: {str(e)}")
+        logger.error(f"Erreur lors de l'analyse Vision: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erreur lors de l'analyse Vision: {str(e)}")
 
 @app.post("/extract", response_model=ExtractedData)
 async def extract_pdf_data(file: UploadFile = File(...)):
@@ -215,14 +247,43 @@ async def extract_pdf_data(file: UploadFile = File(...)):
         if not file.filename.endswith('.pdf'):
             raise HTTPException(status_code=400, detail="Le fichier doit être un PDF")
 
-        # Extraction du texte
-        text = await extract_text_from_pdf(file)
+        # Lire le contenu du fichier une seule fois
+        content = await file.read()
         
-        # Extraction des données structurées
-        structured_data = await extract_structured_data(text)
+        # Créer un BytesIO pour PyPDF2
+        pdf_stream = io.BytesIO(content)
+        pdf_reader = PyPDF2.PdfReader(pdf_stream)
         
-        logger.info("Traitement terminé avec succès")
-        return structured_data
+        # Vérifier si le PDF est valide
+        if len(pdf_reader.pages) == 0:
+            raise HTTPException(status_code=400, detail="Le fichier PDF est vide ou corrompu")
+        
+        # Réinitialiser le stream pour la conversion en PNG
+        pdf_stream.seek(0)
+        
+        # Créer un dossier temporaire pour stocker les fichiers
+        with tempfile.TemporaryDirectory() as temp_dir:
+            # Sauvegarder le fichier PDF temporairement
+            temp_pdf_path = os.path.join(temp_dir, "temp.pdf")
+            with open(temp_pdf_path, "wb") as temp_pdf:
+                temp_pdf.write(content)
+            
+            # Convertir le PDF en image
+            images = pdf2image.convert_from_path(temp_pdf_path, first_page=1, last_page=1)
+            
+            # Convertir la première page en PNG
+            img_byte_arr = io.BytesIO()
+            images[0].save(img_byte_arr, format='PNG')
+            img_byte_arr = img_byte_arr.getvalue()
+            
+            logger.info("Conversion PDF en PNG réussie")
+            
+            # Analyse Vision
+            result = await analyze_image_with_vision(img_byte_arr)
+            
+            logger.info("Traitement terminé avec succès")
+            return ExtractedData(**result)
+            
     except Exception as e:
         logger.error(f"Erreur globale: {str(e)}")
         logger.error(f"Type d'erreur: {type(e).__name__}")
