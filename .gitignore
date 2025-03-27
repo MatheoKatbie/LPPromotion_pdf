@@ -5,6 +5,7 @@
 *.sln.docstates
 *.userprefs
 
+.env
 # Build results
 [Dd]ebug/
 [Dd]ebugPublic/
@@ -27,3 +28,7 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+
+# Docker
+.docker/
+docker-compose.override.yml
