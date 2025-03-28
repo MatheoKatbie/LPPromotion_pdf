@@ -131,50 +131,28 @@ namespace LPPromotion_PDF2.Pages
                 analyses.Clear();
                 fileStatuses.Clear();
 
-                var results = new List<string>();
+                // Initialiser le statut de tous les fichiers
                 foreach (var file in selectedFiles)
                 {
-                    // Initialiser le statut du fichier
                     fileStatuses[file.Name] = new FileStatus { IsAnalyzing = true };
-                    StateHasChanged();
+                }
+                StateHasChanged();
 
-                    try
-                    {
-                        using var stream = file.OpenReadStream(maxAllowedSize: MaxFileSize);
-                        
-                        // Envoyer le fichier à l'API Python
-                        var analysis = await PythonApiService.AnalyzePdfAsync(stream, file.Name);
+                // Créer une liste de tâches pour le traitement parallèle
+                var tasks = new List<Task>();
+                var semaphore = new SemaphoreSlim(5); // Limite de 5 requêtes simultanées
 
-                        // Créer une copie de l'analyse avec le nom du fichier
-                        var analysisWithFileName = new PlanAnalysis
-                        {
-                            FileName = file.Name,
-                            TypeBien = analysis.TypeBien,
-                            Surfaces = analysis.Surfaces,
-                            Caracteristiques = analysis.Caracteristiques,
-                            VisionAnalysis = analysis.VisionAnalysis
-                        };
-                        
-                        // Stocker le nom du fichier dans une propriété temporaire
-                        results.Add($"=== Analyse de {file.Name} ===\n{analysisWithFileName}\n");
-                        analyses.Add(analysisWithFileName);
-                        
-                        // Mettre à jour le statut du fichier
-                        fileStatuses[file.Name] = new FileStatus { IsCompleted = true };
-                    }
-                    catch (Exception ex)
-                    {
-                        // En cas d'erreur, mettre à jour le statut du fichier
-                        fileStatuses[file.Name] = new FileStatus 
-                        { 
-                            HasError = true, 
-                            ErrorMessage = $"Erreur : {ex.Message}" 
-                        };
-                    }
-
-                    StateHasChanged();
+                foreach (var file in selectedFiles)
+                {
+                    tasks.Add(ProcessFileAsync(file, semaphore));
                 }
 
+                // Attendre que toutes les tâches soient terminées
+                await Task.WhenAll(tasks);
+
+                // Générer le résultat final
+                var results = analyses.Select(analysis => 
+                    $"=== Analyse de {analysis.FileName} ===\n{analysis}\n").ToList();
                 result = string.Join("\n", results);
             }
             catch (Exception ex)
@@ -184,6 +162,49 @@ namespace LPPromotion_PDF2.Pages
             finally
             {
                 isLoading = false;
+            }
+        }
+
+        private async Task ProcessFileAsync(IBrowserFile file, SemaphoreSlim semaphore)
+        {
+            try
+            {
+                await semaphore.WaitAsync();
+
+                using var stream = file.OpenReadStream(maxAllowedSize: MaxFileSize);
+                
+                // Envoyer le fichier à l'API Python
+                var analysis = await PythonApiService.AnalyzePdfAsync(stream, file.Name);
+
+                // Créer une copie de l'analyse avec le nom du fichier
+                var analysisWithFileName = new PlanAnalysis
+                {
+                    FileName = file.Name,
+                    TypeBien = analysis.TypeBien,
+                    Surfaces = analysis.Surfaces,
+                    Caracteristiques = analysis.Caracteristiques,
+                    VisionAnalysis = analysis.VisionAnalysis
+                };
+                
+                // Ajouter l'analyse à la liste
+                analyses.Add(analysisWithFileName);
+                
+                // Mettre à jour le statut du fichier
+                fileStatuses[file.Name] = new FileStatus { IsCompleted = true };
+            }
+            catch (Exception ex)
+            {
+                // En cas d'erreur, mettre à jour le statut du fichier
+                fileStatuses[file.Name] = new FileStatus 
+                { 
+                    HasError = true, 
+                    ErrorMessage = $"Erreur : {ex.Message}" 
+                };
+            }
+            finally
+            {
+                semaphore.Release();
+                StateHasChanged();
             }
         }
 

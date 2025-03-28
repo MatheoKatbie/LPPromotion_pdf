@@ -7,8 +7,7 @@ import os
 from dotenv import load_dotenv
 import json
 from decimal import Decimal
-from openai import OpenAI
-import httpx
+from openai import AsyncOpenAI
 import logging
 import decimal
 import pdf2image
@@ -16,6 +15,7 @@ import tempfile
 from PIL import Image
 import io
 import base64
+import asyncio
 
 # Configuration du logging
 logging.basicConfig(level=logging.DEBUG)
@@ -56,9 +56,9 @@ try:
     if not api_key:
         raise ValueError("OPENAI_API_KEY n'est pas définie dans le fichier .env")
     
-    client = OpenAI(
+    client = AsyncOpenAI(
         api_key=api_key,
-        http_client=httpx.Client()
+        timeout=30.0
     )
     logger.info("Client OpenAI configuré avec succès")
 except Exception as e:
@@ -212,13 +212,19 @@ async def analyze_image_with_vision(image_bytes: bytes) -> dict:
             }
         ]
         
-        # Appeler l'API OpenAI Vision
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=messages,
-            max_tokens=1000,
-            response_format={"type": "json_object"}
-        )
+        # Appeler l'API OpenAI Vision avec un timeout
+        try:
+            response = await asyncio.wait_for(
+                client.chat.completions.create(
+                    model="gpt-4o",
+                    messages=messages,
+                    max_tokens=1000,
+                    response_format={"type": "json_object"}
+                ),
+                timeout=30.0
+            )
+        except asyncio.TimeoutError:
+            raise HTTPException(status_code=504, detail="L'analyse de l'image a pris trop de temps")
         
         # Extraire et parser la réponse JSON
         response_data = json.loads(response.choices[0].message.content)
@@ -268,8 +274,12 @@ async def extract_pdf_data(file: UploadFile = File(...)):
             with open(temp_pdf_path, "wb") as temp_pdf:
                 temp_pdf.write(content)
             
-            # Convertir le PDF en image
-            images = pdf2image.convert_from_path(temp_pdf_path, first_page=1, last_page=1)
+            # Convertir le PDF en image de manière asynchrone
+            loop = asyncio.get_event_loop()
+            images = await loop.run_in_executor(
+                None,
+                lambda: pdf2image.convert_from_path(temp_pdf_path, first_page=1, last_page=1)
+            )
             
             # Convertir la première page en PNG
             img_byte_arr = io.BytesIO()
