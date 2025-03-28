@@ -7,6 +7,7 @@ using System.Text.Json.Serialization;
 using LPPromotion_PDF2.Models;
 using Microsoft.AspNetCore.Components.Web;
 using System.Text;
+using System.Globalization;
 
 namespace LPPromotion_PDF2.Pages
 {
@@ -190,13 +191,15 @@ namespace LPPromotion_PDF2.Pages
         {
             if (!analyses.Any()) return string.Empty;
 
+            // Utiliser la culture française pour le formatage des nombres
+            var culture = CultureInfo.GetCultureInfo("fr-FR");
             var csv = new System.Text.StringBuilder();
             
             // Ajouter le BOM UTF-8 pour Excel
             csv.Append("\uFEFF");
             
             // En-têtes
-            csv.AppendLine("Nom du fichier;Type de bien;Typologie;Étage;Surface totale;Pièces;Caractéristiques;Analyse de l'exposition");
+            csv.AppendLine("Nom du fichier;Type de bien;Typologie;Étage;Surface habitable;Pièces;Caractéristiques;Orientation");
 
             // Données
             foreach (var analysis in analyses)
@@ -223,7 +226,7 @@ namespace LPPromotion_PDF2.Pages
                 // Formater les pièces avec leurs surfaces dans une seule cellule
                 var pieces = analysis.Surfaces.Pieces
                     .OrderBy(p => p.Nom)
-                    .Select(p => $"{p.Nom}: {p.Surface:0.00}m²");
+                    .Select(p => $"{p.Nom}: {p.Surface.ToString("0.00", culture)}m²");
 
                 // Joindre les pièces avec des retours à la ligne
                 var piecesFormatted = string.Join("\r\n", pieces);
@@ -247,7 +250,7 @@ namespace LPPromotion_PDF2.Pages
                               $"{typeBien};" +
                               $"{typologie};" +
                               $"{etage};" +
-                              $"{analysis.Surfaces.SurfaceTotale:0.00}m²;" +
+                              $"{Math.Round(analysis.Surfaces.SurfaceTotale)}m²;" +
                               $"{piecesFormatted};" +
                               $"{caracteristiques};" +
                               $"{visionAnalysis}");
