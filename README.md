@@ -51,7 +51,7 @@ Le frontend sera accessible sur `http://localhost:7293` ou l'URL affichée dans 
 
 - `LPPromotion_PDF2/` : Application Blazor frontend
 - `docker-compose.yml` : Configuration Docker pour le backend
-- `plan/` : Dossier pour les fichiers PDF à analyser
+- `plan/` : Dossier pour les fichiers tests PDF à analyser (non nécessaires)
 
 ## Fonctionnalités
 
