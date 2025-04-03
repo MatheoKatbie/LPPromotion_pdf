@@ -236,6 +236,12 @@ code {
   padding: 1.5rem;
 }
 
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
 .result-header {
   display: flex;
   justify-content: space-between;

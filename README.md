@@ -1,71 +1,60 @@
 # LPPromotion PDF Analyzer
 
-Application Blazor pour l'analyse de plans PDF avec intégration de l'API Grok.
+Application Blazor pour l'analyse de plans PDF avec intégration de l'API OpenAI.
 
 ## Prérequis
 
 - .NET 8.0 SDK
-- Python 3.8 ou supérieur
+- Docker et Docker Compose
+- Visual Studio 2022
 
 ## Configuration
 
-1. Créer un fichier `.env` à la racine du projet avec la clé API Grok :
+1. Créer un fichier `.env` à la racine du projet avec la clé API OpenAI :
 
 ```
-GROK_API_KEY=votre_clé_api_ici
+OPENAI_API_KEY=votre_clé_api_ici
 ```
 
 ## Installation et lancement
 
-### Backend (API Python)
+### Backend (Docker)
 
-1. Créer un environnement virtuel Python :
-
-```bash
-python -m venv venv
-```
-
-2. Activer l'environnement virtuel :
-
-- Windows :
+1. Lancer le backend avec Docker Compose :
 
 ```bash
-.\venv\Scripts\activate
+docker compose up --build
 ```
 
-- Linux/Mac :
+2. Pour arrêter le backend :
 
 ```bash
-source venv/bin/activate
+docker compose down
 ```
 
-3. Installer les dépendances :
+3. Pour relancer le backend :
 
 ```bash
-pip install -r requirements.txt
+docker compose up
 ```
 
-4. Lancer l'API Python :
-
-```bash
-python main.py
-```
-
-L'API sera accessible sur `http://localhost:8000`
+Le backend sera accessible sur `http://localhost:8000`
 
 ### Frontend (Blazor)
 
-Lancer avec Visual Studio 2022
+1. Ouvrir le projet dans Visual Studio 2022
+2. Lancer l'application avec F5 ou le bouton de démarrage
+
+Le frontend sera accessible sur `http://localhost:7293` ou l'URL affichée dans Visual Studio
 
 ## Structure du projet
 
 - `LPPromotion_PDF2/` : Application Blazor frontend
-- `main.py` : API Python backend
-- `requirements.txt` : Dépendances Python
+- `docker-compose.yml` : Configuration Docker pour le backend
 - `plan/` : Dossier pour les fichiers PDF à analyser
 
 ## Fonctionnalités
 
 - Upload de fichiers PDF
-- Analyse automatique des plans via l'API Grok
+- Analyse automatique des plans via l'API OpenAI
 - Export des résultats en CSV

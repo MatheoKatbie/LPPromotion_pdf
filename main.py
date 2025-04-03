@@ -166,12 +166,16 @@ async def analyze_image_with_vision(image_bytes: bytes) -> dict:
                         - Si vous trouvez d'autres symboles dans la légende, ajoutez-les également avec leur signification
                         - Listez toutes les caractéristiques présentes dans le plan en vous basant sur ces symboles
                         5. Orientation :
-                        - IMPORTANT : Identifiez la flèche du nord qui est au-dessus du schéma du bâtiment (pas celle qui pourrait être sur le côté ou ailleurs)
-                        - Si la flèche pointe vers la droite, l'orientation du document est Ouest
-                        - Si la flèche pointe vers la gauche, l'orientation du document est Est
-                        - Si la flèche pointe vers le haut, l'orientation du document est Nord
-                        - Si la flèche pointe vers le bas, l'orientation du document est Sud
-                        - IMPORTANT : Le document est TOUJOURS orienté vers le HAUT, peu importe la direction de la flèche
+                        - IMPORTANT : Cherchez la boussole/rose des vents sur le plan. C'est un cercle divisé en quatre parties avec la lettre "N" (Nord)
+                        - Cette boussole se trouve généralement en haut à droite du plan
+                        - La lettre "N" dans la boussole indique la direction du Nord
+                        - Pour déterminer l'orientation du document :
+                          * Si le "N" de la boussole est à droite du cercle, le document est orienté vers l'OUEST
+                          * Si le "N" de la boussole est à gauche du cercle, le document est orienté vers l'EST
+                          * Si le "N" de la boussole est en haut du cercle, le document est orienté vers le NORD
+                          * Si le "N" de la boussole est en bas du cercle, le document est orienté vers le SUD
+                        - ATTENTION : Ne pas confondre avec d'autres symboles ou flèches sur le plan
+                        - ATTENTION : L'orientation à retourner est celle vers laquelle le document est orienté, PAS la direction du Nord
 
                         Retournez les informations au format JSON suivant :
                         {
@@ -199,8 +203,7 @@ async def analyze_image_with_vision(image_bytes: bytes) -> dict:
                         4. Ne fusionnez pas les pièces, gardez-les séparées
                         5. Pour les pièces avec des notes (comme "dont 2.4m² SDE"), incluez la surface totale
                         6. Pour toute pièce supplémentaire non listée, ajoutez-la avec le préfixe "surface_" suivi du nom en minuscules avec des underscores
-                        7. IMPORTANT : Pour l'orientation, regardez UNIQUEMENT la flèche du nord qui est au-dessus du schéma du bâtiment
-                        8. IMPORTANT : Pour les caractéristiques, précisez la pièce où se trouve chaque équipement (PL, Etg, EV, Ch)"""
+                        7. IMPORTANT : Pour les caractéristiques, précisez la pièce où se trouve chaque équipement (PL, Etg, EV, Ch)"""
                     },
                     {
                         "type": "image_url",

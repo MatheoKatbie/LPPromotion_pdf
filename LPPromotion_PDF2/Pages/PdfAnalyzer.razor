@@ -7,9 +7,15 @@
 <div class="main-container">
     <div class="content-wrapper">
         <div class="header">
-            <h1>Analyseur de Plans PDF</h1>
-            <p class="subtitle">Analysez vos plans PDF et exportez les données en CSV</p>
+            <div>
+                <h1>Analyseur de Plans PDF</h1>
+                <p class="subtitle">Analysez vos plans PDF et exportez les données en CSV</p>
+            </div>
+            <div>
+                <img src="images/logo.avif" alt="Logo" class="logo">
+            </div>
         </div>
+        
 
         <div class="upload-section">
             <div class="upload-area" @ondragover:preventDefault @ondrop="OnDrop">
@@ -307,7 +313,7 @@
 
     .result-header {
         display: flex;
-        justify-content: space-between;
+        justify-content: space-around;
         align-items: center;
         margin-bottom: 1rem;
     }
