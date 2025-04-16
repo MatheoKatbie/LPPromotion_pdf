@@ -219,7 +219,7 @@ async def analyze_image_with_vision(image_bytes: bytes) -> dict:
         try:
             response = await asyncio.wait_for(
                 client.chat.completions.create(
-                    model="gpt-4o",
+                    model="gpt-4.1",
                     messages=messages,
                     max_tokens=1000,
                     response_format={"type": "json_object"}
